@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BD animées — lecteur</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#14181b; --panel:#1f2529; --ink:#eceff1; --muted:#90a4ae; --accent:#ffd54f; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; gap:12px; align-items:center; padding:12px 16px; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0 12px 0 0; font-weight:700; }
+  .tabs button, .ctrl button { background:var(--panel); color:var(--ink); border:1px solid #37474f; border-radius:8px; padding:8px 14px; cursor:pointer; font:inherit; }
+  .tabs button.on { background:var(--accent); color:#1a1a1a; border-color:var(--accent); font-weight:700; }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:16px; padding:0 16px 16px; }
+  @media (max-width: 1000px) { main { grid-template-columns:1fr; } }
+  .stage { background:#000; border-radius:10px; overflow:hidden; }
+  canvas { display:block; width:100%; height:auto; aspect-ratio:16/9; }
+  .ctrl { display:flex; gap:10px; align-items:center; margin-top:10px; }
+  .ctrl input[type=range] { flex:1; accent-color:var(--accent); }
+  .time { font-variant-numeric:tabular-nums; color:var(--muted); min-width:110px; text-align:right; }
+  aside { background:var(--panel); border-radius:10px; padding:12px; max-height:calc(100vh - 90px); overflow:auto; }
+  aside h2 { font-size:14px; margin:4px 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .sc { padding:8px 10px; border-radius:8px; cursor:pointer; margin-bottom:6px; border:1px solid transparent; }
+  .sc:hover { border-color:#455a64; }
+  .sc.on { background:#263238; border-color:var(--accent); }
+  .sc b { display:block; }
+  .sc small { color:var(--muted); }
+  .note { color:var(--muted); font-size:13px; margin-top:12px; }
+  .warn { color:#ffab91; }
+  body.render { background:#000; }
+  body.render header, body.render aside, body.render .ctrl { display:none; }
+  body.render main { display:block; padding:0; }
+  body.render .stage { border-radius:0; }
+  body.render canvas { width:1920px; height:1080px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BD animées</h1>
+  <div class="tabs">
+    <button data-film="film1">1 · Tout le monde a terminé… sauf le projet !</button>
+    <button data-film="film2">2 · On coupe le réseau !</button>
+  </div>
+</header>
+<main>
+  <section>
+    <div class="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+    <div class="ctrl">
+      <button id="play">▶ Lecture</button>
+      <input id="seek" type="range" min="0" max="1000" value="0" step="1">
+      <span class="time" id="time">0.0 / 0.0 s</span>
+      <button id="mute">🔊</button>
+    </div>
+    <p class="note" id="status"></p>
+  </section>
+  <aside>
+    <h2>Storyboard</h2>
+    <div id="scenes"></div>
+    <p class="note">Cliquer sur une scène pour s'y rendre. Espace = lecture/pause, ← → = ±2 s.</p>
+  </aside>
+</main>
+<audio id="audio" preload="auto"></audio>
+
+<script src="src/timeline.js"></script>
+<script src="src/engine.js"></script>
+<script src="src/film1.js"></script>
+<script src="src/film2.js"></script>
+<script src="audio/timing.js" onerror="window.TIMING=null"></script>
+<script>
+(async function () {
+  const qs = new URLSearchParams(location.search);
+  const renderMode = qs.has('render');
+  if (renderMode) document.body.classList.add('render');
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const audio = document.getElementById('audio');
+  const $ = (id) => document.getElementById(id);
+  let tl, filmId, playing = false, clock0 = 0, tNow = 0, hasAudio = false;
+
+  await E.loadAssets();
+
+  function load(id) {
+    filmId = id;
+    tl = TL.build(FILMS[id], window.TIMING);
+    window.__duration = tl.duration;
+    document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.film === id));
+    $('scenes').innerHTML = tl.scenes
+      .map((s, i) => `<div class="sc" data-i="${i}"><b>${i}. ${s.label}</b><small>${s.start.toFixed(1)} s → ${s.end.toFixed(1)} s · ${s.dur.toFixed(1)} s</small></div>`)
+      .join('');
+    $('scenes').querySelectorAll('.sc').forEach((el) => el.onclick = () => seek(tl.scenes[+el.dataset.i].start + 0.01));
+    hasAudio = false;
+    if (!renderMode) {
+      audio.src = 'audio/' + id + '.wav';
+      audio.oncanplay = () => { hasAudio = true; $('status').textContent = ''; };
+      audio.onerror = () => { hasAudio = false; $('status').innerHTML = '<span class="warn">Bande-son absente : lancez <code>npm run audio</code>. Lecture muette, durées estimées.</span>'; };
+    }
+    pause(); seek(0);
+  }
+  function seek(t) {
+    tNow = E.clamp(t, 0, tl.duration);
+    if (hasAudio) audio.currentTime = tNow;
+    clock0 = performance.now() / 1000 - tNow;
+    draw();
+  }
+  function play() {
+    if (tNow >= tl.duration - 0.05) seek(0);
+    playing = true; $('play').textContent = '⏸ Pause';
+    clock0 = performance.now() / 1000 - tNow;
+    if (hasAudio) { audio.currentTime = tNow; audio.play().catch(() => {}); }
+    requestAnimationFrame(loop);
+  }
+  function pause() { playing = false; $('play').textContent = '▶ Lecture'; audio.pause(); }
+  function loop() {
+    if (!playing) return;
+    tNow = hasAudio && !audio.paused ? audio.currentTime : performance.now() / 1000 - clock0;
+    if (tNow >= tl.duration) { tNow = tl.duration; pause(); }
+    draw();
+    if (playing) requestAnimationFrame(loop);
+  }
+  function draw() {
+    E.render(ctx, tl, tNow);
+    $('seek').value = Math.round((tNow / tl.duration) * 1000);
+    $('time').textContent = tNow.toFixed(1) + ' / ' + tl.duration.toFixed(1) + ' s';
+    const i = E.sceneAt(tl, tNow);
+    document.querySelectorAll('.sc').forEach((el) => el.classList.toggle('on', +el.dataset.i === i));
+  }
+
+  document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => load(b.dataset.film));
+  $('play').onclick = () => (playing ? pause() : play());
+  $('seek').oninput = (e) => seek((e.target.value / 1000) * tl.duration);
+  $('mute').onclick = () => { audio.muted = !audio.muted; $('mute').textContent = audio.muted ? '🔇' : '🔊'; };
+  addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+    if (e.code === 'ArrowRight') seek(tNow + 2);
+    if (e.code === 'ArrowLeft') seek(tNow - 2);
+  });
+
+  // API utilisée par l'export (tools/export.mjs) : rendu image par image
+  window.renderFrame = (t, q = 0.92) => { E.render(ctx, tl, t); return cv.toDataURL('image/jpeg', q); };
+  window.loadFilm = (id) => { load(id); return tl.duration; };
+
+  load(qs.get('film') || qs.get('render') || 'film1');
+  window.__ready = true;
+})().catch((e) => { document.body.insertAdjacentHTML('afterbegin', '<pre style="color:#f88;padding:16px">' + e.stack + '</pre>'); window.__error = String(e); });
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+.DS_Store
+~$*
+node_modules/
+dessin-anime/audio/voices/
+dessin-anime/out/snaps/

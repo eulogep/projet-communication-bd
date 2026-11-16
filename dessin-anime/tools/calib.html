@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#fff;font:12px Arial">
+<div id=g style="display:flex;flex-wrap:wrap;width:1900px"></div>
+<script>
+const N=[21,68,31,71,28,72,90,6,99,33,54,18,93];
+for(const n of N){const c=document.createElement('canvas');c.width=360;c.height=300;const x=c.getContext('2d');
+const im=new Image();im.onload=()=>{ // top 300px of a 360x486 render = head zone (0..0.62 of height)
+x.drawImage(im,0,0,360,486);x.strokeStyle='rgba(255,0,0,.45)';x.fillStyle='red';x.font='10px Arial';
+for(let i=0;i<=20;i++){const X=i*18;x.beginPath();x.moveTo(X,0);x.lineTo(X,300);x.lineWidth=i%5?0.5:1.5;x.stroke();if(i%2==0)x.fillText(i*5,X+1,10);}
+for(let j=0;j<=12;j++){const Y=j*486*0.05;x.beginPath();x.moveTo(0,Y);x.lineTo(360,Y);x.lineWidth=j%2?0.5:1.5;x.stroke();x.fillText(j*5,1,Y-1);}
+x.fillStyle='blue';x.font='bold 16px Arial';x.fillText('peep-'+n,250,290);};
+im.src='../assets/peeps/peep-'+n+'.png';const d=document.createElement('div');d.style.margin='4px';d.appendChild(c);g.appendChild(d);}
+</script>

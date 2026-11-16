@@ -1,0 +1,17 @@
+{
+  "name": "bd-dessin-anime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deux courts-métrages animés 2D (Canvas) tirés des BD « Tout le monde a terminé… sauf le projet ! » et « On coupe le réseau ! »",
+  "scripts": {
+    "preview": "node tools/server.mjs",
+    "audio": "node tools/build-audio.mjs",
+    "storyboard": "node tools/storyboard.mjs",
+    "export": "node tools/export.mjs",
+    "snap": "node tools/snap.mjs",
+    "all": "node tools/build-audio.mjs && node tools/storyboard.mjs && node tools/export.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}
